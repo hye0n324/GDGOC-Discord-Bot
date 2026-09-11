@@ -10,8 +10,7 @@ module.exports = {
         .setDescription('구글 스프레드시트의 최신 포춘쿠키 데이터를 수동으로 동기화합니다.')
         .setDescriptionLocalizations({
             ko: '구글 스프레드시트의 최신 포춘쿠키 데이터를 수동으로 동기화합니다.'
-        })
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild), // 기본 관리자 권한
+        }),
 
     async execute(interaction) {
         // 1. 특정 서버 ID 제한 (.env의 주석/공백 제거 파싱)
