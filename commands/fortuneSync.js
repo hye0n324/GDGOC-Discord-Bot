@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { syncFortuneData } = require('../utils/fortuneData');
 
 module.exports = {
@@ -21,7 +21,7 @@ module.exports = {
         if (allowedGuildId && interaction.guildId !== allowedGuildId) {
             return await interaction.reply({
                 content: `⚠️ 이 명령어는 지정된 디스코드 서버에서만 사용할 수 있습니다.\n(현재 서버 ID: \`${interaction.guildId}\` / 허용된 서버 ID: \`${allowedGuildId}\`)`,
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
         }
 
@@ -30,26 +30,41 @@ module.exports = {
         const targetRoleName = rawRoleName.split('#')[0].trim();
         const targetRoleLower = targetRoleName.toLowerCase();
 
-        // 관리자 권한 여부 체크
-        const isAdmin = 
-            interaction.member.permissions.has(PermissionFlagsBits.Administrator) ||
-            interaction.member.permissions.has(PermissionFlagsBits.ManageGuild);
+        // discord.js v14 표준 interaction.memberPermissions 사용
+        const memberPerms = interaction.memberPermissions;
+        const isAdmin = memberPerms && (
+            memberPerms.has(PermissionFlagsBits.Administrator) ||
+            memberPerms.has(PermissionFlagsBits.ManageGuild)
+        );
 
-        // 유저가 보유한 역할 목록 체크 (대소문자/공백 무시)
-        const userRoles = interaction.member.roles.cache;
-        const hasTargetRole = userRoles.some(role => {
-            const roleNameLower = role.name.trim().toLowerCase();
-            return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
-        });
+        // 유저가 보유한 역할(Role) 안전하게 검사
+        let hasTargetRole = false;
+        if (interaction.member && interaction.member.roles) {
+            if (interaction.member.roles.cache) {
+                // GuildMember 인스턴스 (컬렉션 캐시)
+                hasTargetRole = interaction.member.roles.cache.some(role => {
+                    const roleNameLower = role.name.trim().toLowerCase();
+                    return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
+                });
+            } else if (Array.isArray(interaction.member.roles) && interaction.guild) {
+                // API raw 객체일 경우 role ID 배열에서 역할명 탐색
+                hasTargetRole = interaction.member.roles.some(roleId => {
+                    const role = interaction.guild.roles.cache.get(roleId);
+                    if (!role) return false;
+                    const roleNameLower = role.name.trim().toLowerCase();
+                    return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
+                });
+            }
+        }
 
         if (!isAdmin && !hasTargetRole) {
             return await interaction.reply({
                 content: `🔒 **권한 부족**: 이 명령어는 **\`${targetRoleName}\`** 역할을 보유하고 계시거나 서버 관리자 권한이 있으신 분만 사용할 수 있습니다.`,
-                ephemeral: true
+                flags: MessageFlags.Ephemeral
             });
         }
 
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const result = await syncFortuneData();
 
