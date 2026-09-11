@@ -14,25 +14,35 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild), // 기본 관리자 권한
 
     async execute(interaction) {
-        // 1. 특정 서버 ID 제한 (.env에 ALLOWED_GUILD_ID가 설정되어 있는 경우)
-        const allowedGuildId = process.env.ALLOWED_GUILD_ID;
+        // 1. 특정 서버 ID 제한 (.env의 주석/공백 제거 파싱)
+        const rawGuildId = process.env.ALLOWED_GUILD_ID || '';
+        const allowedGuildId = rawGuildId.split('#')[0].trim();
+
         if (allowedGuildId && interaction.guildId !== allowedGuildId) {
             return await interaction.reply({
-                content: '⚠️ 이 명령어는 지정된 디스코드 서버에서만 사용할 수 있습니다.',
+                content: `⚠️ 이 명령어는 지정된 디스코드 서버에서만 사용할 수 있습니다.\n(현재 서버 ID: \`${interaction.guildId}\` / 허용된 서버 ID: \`${allowedGuildId}\`)`,
                 ephemeral: true
             });
         }
 
-        // 2. 특정 역할(Role) 이름 제한 (.env에 ALLOWED_ROLE_NAME이 없으면 기본 '운영진' / '관리자')
-        const targetRoleName = process.env.ALLOWED_ROLE_NAME || '운영진';
-        
-        // 관리자 권한이 있거나, 지정된 역할(예: '운영진')을 가지고 있는지 검사
-        const hasPermission = 
-            interaction.member.permissions.has(PermissionFlagsBits.Administrator) ||
-            interaction.member.permissions.has(PermissionFlagsBits.ManageGuild) ||
-            interaction.member.roles.cache.some(role => role.name === targetRoleName || role.name === '운영진' || role.name === '관리자');
+        // 2. 특정 역할(Role) 이름 제한 (.env 파싱 및 트림)
+        const rawRoleName = process.env.ALLOWED_ROLE_NAME || '운영진';
+        const targetRoleName = rawRoleName.split('#')[0].trim();
+        const targetRoleLower = targetRoleName.toLowerCase();
 
-        if (!hasPermission) {
+        // 관리자 권한 여부 체크
+        const isAdmin = 
+            interaction.member.permissions.has(PermissionFlagsBits.Administrator) ||
+            interaction.member.permissions.has(PermissionFlagsBits.ManageGuild);
+
+        // 유저가 보유한 역할 목록 체크 (대소문자/공백 무시)
+        const userRoles = interaction.member.roles.cache;
+        const hasTargetRole = userRoles.some(role => {
+            const roleNameLower = role.name.trim().toLowerCase();
+            return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
+        });
+
+        if (!isAdmin && !hasTargetRole) {
             return await interaction.reply({
                 content: `🔒 **권한 부족**: 이 명령어는 **\`${targetRoleName}\`** 역할을 보유하고 계시거나 서버 관리자 권한이 있으신 분만 사용할 수 있습니다.`,
                 ephemeral: true
