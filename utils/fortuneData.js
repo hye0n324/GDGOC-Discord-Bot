@@ -39,14 +39,57 @@ const defaultMissions = [
 let fortunes = [...defaultFortunes];
 let itItems = [...defaultItItems];
 let missions = [...defaultMissions];
-let lastSyncedAt = null;
+let currentActiveSheetName = '기본';
 
 /**
- * 구글 스프레드시트에서 최신 포춘쿠키 데이터를 동기화합니다.
+ * 1단계: '설정' 탭에서 C4(4번째 행, C열) 셀의 활성화 탭 이름을 가져옵니다.
+ */
+async function fetchActiveSheetName(sheetId) {
+    try {
+        const configUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent('설정')}&_t=${Date.now()}`;
+        const res = await fetch(configUrl, {
+            headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+        });
+
+        if (!res.ok) return null;
+
+        const csvText = await res.text();
+        if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) return null;
+
+        const records = parse(csvText, { skip_empty_lines: false, trim: true });
+
+        // C4 셀 (0-indexed 기준: 3번째 행, 2번째 열)
+        let selectedTab = null;
+        if (records.length > 3 && records[3] && records[3][2]) {
+            selectedTab = records[3][2].trim();
+        }
+
+        // C4 위치에 값이 없을 경우 주변 셀 탐색 (보정 로직)
+        if (!selectedTab) {
+            for (let r = 0; r < Math.min(records.length, 10); r++) {
+                for (let c = 0; c < Math.min(records[r].length, 10); c++) {
+                    const val = records[r][c] ? records[r][c].trim() : '';
+                    if (val && val !== '설정' && val !== '현재 활성화 탭' && val !== '현재 탭' && !val.includes('선택')) {
+                        selectedTab = val;
+                        break;
+                    }
+                }
+                if (selectedTab) break;
+            }
+        }
+
+        return selectedTab || null;
+    } catch (err) {
+        console.warn('⚠️ [포춘쿠키] 설정 탭 읽기 실패, 기본 탭 설정을 시도합니다:', err.message);
+        return null;
+    }
+}
+
+/**
+ * 2단계: 구글 스프레드시트에서 최신 포춘쿠키 데이터를 동기화합니다.
  */
 async function syncFortuneData() {
     const sheetId = process.env.GOOGLE_SHEET_ID;
-    const sheetName = process.env.ACTIVE_SHEET_NAME || '기본';
 
     if (!sheetId || sheetId === 'YOUR_GOOGLE_SHEET_ID' || sheetId === '추출한_구글_시트_ID') {
         console.log('ℹ️ [포춘쿠키] GOOGLE_SHEET_ID가 설정되지 않아 기본 로컬 데이터를 사용합니다.');
@@ -54,6 +97,12 @@ async function syncFortuneData() {
     }
 
     try {
+        // 1단계: '설정' 탭에서 활성화 탭 이름 읽기
+        const activeTabFromConfig = await fetchActiveSheetName(sheetId);
+        const sheetName = activeTabFromConfig || process.env.ACTIVE_SHEET_NAME || '기본';
+        currentActiveSheetName = sheetName;
+
+        // 2단계: 대상 탭 데이터 읽기
         const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&_t=${Date.now()}`;
         const response = await fetch(url, {
             headers: {
@@ -63,12 +112,11 @@ async function syncFortuneData() {
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status} ${response.statusText} (시트 접근 실패)`);
+            throw new Error(`HTTP ${response.status} ${response.statusText} (시트 '${sheetName}' 접근 실패)`);
         }
 
         const csvText = await response.text();
 
-        // 만약 구글 로그인 페이지 HTML 등이 돌아왔을 경우 (공유 설정 미흡)
         if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) {
             throw new Error('시트가 공개되지 않았습니다. 공유 설정을 "링크가 있는 모든 사용자에게 공개"로 설정해 주세요.');
         }
@@ -78,14 +126,11 @@ async function syncFortuneData() {
             trim: true
         });
 
-        // 데이터가 전혀 없을 경우
         if (records.length === 0) {
             throw new Error(`시트 탭('${sheetName}')의 내용을 읽을 수 없습니다. 탭 이름을 확인해 주세요.`);
         }
 
-        // 첫 번째 행이 헤더인지 여부 체크 및 데이터 파싱
-        // 만약 행이 1개뿐이라면 그 행 자체가 데이터일 수 있음. 
-        // 2개 이상이고 1번째 행이 헤더("오늘의 한 마디" 등)인 경우 slice(1)
+        // 데이터 파싱 (1행이 헤더인지 판단)
         let dataRows = records;
         if (records.length > 1 && (records[0][0].includes('오늘') || records[0][0].includes('한 마디') || records[0][0].includes('운세') || records[0][0].includes('컬럼') || records[0][0].includes('Column'))) {
             dataRows = records.slice(1);
@@ -109,8 +154,7 @@ async function syncFortuneData() {
         if (newItems.length > 0) itItems = newItems;
         if (newMissions.length > 0) missions = newMissions;
 
-        lastSyncedAt = new Date();
-        console.log(`✅ [포춘쿠키] 구글 시트 동기화 완료! (시트 탭: '${sheetName}', 운세: ${fortunes.length}개, ITem: ${itItems.length}개, 미션: ${missions.length}개)`);
+        console.log(`✅ [포춘쿠키] 구글 시트 동기화 완료! (적용된 탭: '${sheetName}', 운세: ${fortunes.length}개, ITem: ${itItems.length}개, 미션: ${missions.length}개)`);
 
         return {
             success: true,
