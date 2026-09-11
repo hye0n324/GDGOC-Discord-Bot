@@ -24,7 +24,17 @@ module.exports = {
             });
         }
 
-        // 2. 특정 역할 ID 및 역할 이름 제한 파싱
+        // 2. 최신 유저 멤버 정보 및 역할 실시간 강제 동기화 (캐시 방지 force fetch)
+        let member = interaction.member;
+        if (interaction.guild && interaction.user) {
+            try {
+                member = await interaction.guild.members.fetch({ user: interaction.user.id, force: true });
+            } catch (e) {
+                // fetch 실패 시 기존 interaction.member 사용
+            }
+        }
+
+        // 3. 특정 역할 ID 및 역할 이름 제한 파싱
         const rawRoleId = process.env.ALLOWED_ROLE_ID || '';
         const targetRoleId = rawRoleId.split('#')[0].trim();
 
@@ -32,42 +42,33 @@ module.exports = {
         const targetRoleName = rawRoleName.split('#')[0].trim();
         const targetRoleLower = targetRoleName.toLowerCase();
 
-        // 관리자 권한 여부 체크
-        const memberPerms = interaction.memberPermissions;
-        const isAdmin = memberPerms && (
-            memberPerms.has(PermissionFlagsBits.Administrator) ||
-            memberPerms.has(PermissionFlagsBits.ManageGuild)
+        // 관리자 권한 여부 체크 (최신 member 기준)
+        const isAdmin = member.permissions && (
+            member.permissions.has(PermissionFlagsBits.Administrator) ||
+            member.permissions.has(PermissionFlagsBits.ManageGuild)
         );
 
-        // 역할 검사 (1순위: 역할 ID 매칭 / 2순위: 역할 이름 매칭)
+        // 유저가 보유한 역할(Role) 최신 상태 검사
         let hasTargetRole = false;
-        if (interaction.member && interaction.member.roles) {
-            const rolesCache = interaction.member.roles.cache;
+        const userRoleNames = [];
 
-            if (rolesCache) {
-                // GuildMember 인스턴스
-                if (targetRoleId && rolesCache.has(targetRoleId)) {
-                    hasTargetRole = true;
-                } else {
-                    hasTargetRole = rolesCache.some(role => {
-                        const roleNameLower = role.name.trim().toLowerCase();
-                        return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
-                    });
-                }
-            } else if (Array.isArray(interaction.member.roles)) {
-                // API raw role ID 배열
-                if (targetRoleId && interaction.member.roles.includes(targetRoleId)) {
-                    hasTargetRole = true;
-                } else if (interaction.guild) {
-                    hasTargetRole = interaction.member.roles.some(roleId => {
-                        const role = interaction.guild.roles.cache.get(roleId);
-                        if (!role) return false;
-                        const roleNameLower = role.name.trim().toLowerCase();
-                        return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
-                    });
-                }
+        if (member && member.roles && member.roles.cache) {
+            const rolesCache = member.roles.cache;
+            rolesCache.forEach(r => userRoleNames.push(r.name));
+
+            // 1순위: 역할 ID 매칭
+            if (targetRoleId && rolesCache.has(targetRoleId)) {
+                hasTargetRole = true;
+            } else {
+                // 2순위: 역할 이름 매칭
+                hasTargetRole = rolesCache.some(role => {
+                    const roleNameLower = role.name.trim().toLowerCase();
+                    return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
+                });
             }
         }
+
+        console.log(`👤 [권한 검사] 유저: ${interaction.user.tag} / 관리자권한: ${isAdmin} / 지정역할보유: ${hasTargetRole} / 보유역할목록: [${userRoleNames.join(', ')}]`);
 
         if (!isAdmin && !hasTargetRole) {
             return await interaction.reply({
