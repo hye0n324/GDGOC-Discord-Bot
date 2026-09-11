@@ -20,46 +20,59 @@ module.exports = {
 
         if (allowedGuildId && interaction.guildId !== allowedGuildId) {
             return await interaction.reply({
-                content: `⚠️ 이 명령어는 지정된 디스코드 서버에서만 사용할 수 있습니다.\n(현재 서버 ID: \`${interaction.guildId}\` / 허용된 서버 ID: \`${allowedGuildId}\`)`,
+                content: `⚠️ 이 명령어는 지정된 디스코드 서버에서만 사용할 수 있습니다.`,
                 flags: MessageFlags.Ephemeral
             });
         }
 
-        // 2. 특정 역할(Role) 이름 제한 (.env 파싱 및 트림)
+        // 2. 특정 역할 ID 및 역할 이름 제한 파싱
+        const rawRoleId = process.env.ALLOWED_ROLE_ID || '';
+        const targetRoleId = rawRoleId.split('#')[0].trim();
+
         const rawRoleName = process.env.ALLOWED_ROLE_NAME || '운영진';
         const targetRoleName = rawRoleName.split('#')[0].trim();
         const targetRoleLower = targetRoleName.toLowerCase();
 
-        // discord.js v14 표준 interaction.memberPermissions 사용
+        // 관리자 권한 여부 체크
         const memberPerms = interaction.memberPermissions;
         const isAdmin = memberPerms && (
             memberPerms.has(PermissionFlagsBits.Administrator) ||
             memberPerms.has(PermissionFlagsBits.ManageGuild)
         );
 
-        // 유저가 보유한 역할(Role) 안전하게 검사
+        // 역할 검사 (1순위: 역할 ID 매칭 / 2순위: 역할 이름 매칭)
         let hasTargetRole = false;
         if (interaction.member && interaction.member.roles) {
-            if (interaction.member.roles.cache) {
-                // GuildMember 인스턴스 (컬렉션 캐시)
-                hasTargetRole = interaction.member.roles.cache.some(role => {
-                    const roleNameLower = role.name.trim().toLowerCase();
-                    return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
-                });
-            } else if (Array.isArray(interaction.member.roles) && interaction.guild) {
-                // API raw 객체일 경우 role ID 배열에서 역할명 탐색
-                hasTargetRole = interaction.member.roles.some(roleId => {
-                    const role = interaction.guild.roles.cache.get(roleId);
-                    if (!role) return false;
-                    const roleNameLower = role.name.trim().toLowerCase();
-                    return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
-                });
+            const rolesCache = interaction.member.roles.cache;
+
+            if (rolesCache) {
+                // GuildMember 인스턴스
+                if (targetRoleId && rolesCache.has(targetRoleId)) {
+                    hasTargetRole = true;
+                } else {
+                    hasTargetRole = rolesCache.some(role => {
+                        const roleNameLower = role.name.trim().toLowerCase();
+                        return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
+                    });
+                }
+            } else if (Array.isArray(interaction.member.roles)) {
+                // API raw role ID 배열
+                if (targetRoleId && interaction.member.roles.includes(targetRoleId)) {
+                    hasTargetRole = true;
+                } else if (interaction.guild) {
+                    hasTargetRole = interaction.member.roles.some(roleId => {
+                        const role = interaction.guild.roles.cache.get(roleId);
+                        if (!role) return false;
+                        const roleNameLower = role.name.trim().toLowerCase();
+                        return roleNameLower === targetRoleLower || roleNameLower === '운영진' || roleNameLower === '관리자';
+                    });
+                }
             }
         }
 
         if (!isAdmin && !hasTargetRole) {
             return await interaction.reply({
-                content: `🔒 **권한 부족**: 이 명령어는 **\`${targetRoleName}\`** 역할을 보유하고 계시거나 서버 관리자 권한이 있으신 분만 사용할 수 있습니다.`,
+                content: `🔒 **권한 부족**: 이 명령어는 지정된 역할(Role)을 보유하고 계시거나 서버 관리자 권한이 있으신 분만 사용할 수 있습니다.`,
                 flags: MessageFlags.Ephemeral
             });
         }

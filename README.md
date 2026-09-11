@@ -41,7 +41,7 @@ GDGOC_Dicord_Bot/
 * **🎯 행운의 미션**: 스트레칭, 코드 주석 달기 등 5분 이내 실천 가능한 소확행 미션
 
 ### 2. 🔄 구글 시트 수동 동기화 (`/포춘쿠키동기화` 또는 `/fortune_sync`)
-운영진 및 서버 관리자 전용 수동 동기화 명령어입니다. (특정 디스코드 역할 또는 관리자 권한 필요)
+운영진 및 서버 관리자 전용 수동 동기화 명령어입니다. (특정 디스코드 역할 ID 또는 관리자 권한 필요)
 
 ---
 
@@ -53,7 +53,8 @@ GDGOC_Dicord_Bot/
 DISCORD_TOKEN=YOUR_DISCORD_BOT_TOKEN
 GOOGLE_SHEET_ID=YOUR_GOOGLE_SHEET_ID
 ACTIVE_SHEET_NAME=기본
-ALLOWED_ROLE_NAME=운영진    # 수동 동기화 권한을 가질 디스코드 역할 이름 (기본값: '운영진')
+ALLOWED_ROLE_ID=123456789012345678  # 동기화 권한을 허용할 디스코드 역할 ID (숫자)
+ALLOWED_ROLE_NAME=운영진           # 역할 이름 (ID 미설정 시 대체)
 ```
 
 ### 2. 패키지 설치 및 봇 실행
