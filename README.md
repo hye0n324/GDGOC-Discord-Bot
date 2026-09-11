@@ -25,6 +25,7 @@ GDGOC_Dicord_Bot/
 ├── .gitignore           # Git 제외 파일 목록
 ├── index.js             # 봇 진입점 (명령어 동적 로드 & 슬래시 명령어 자동 등록)
 ├── package.json         # 프로젝트 패키지 관리
+├── TODO.md              # 향후 개발 기획 및 아이디어 메모 (No-Code 제어 방식)
 └── README.md            # 프로젝트 문서
 ```
 
@@ -62,3 +63,8 @@ npm install
 # 봇 실행
 npm start
 ```
+
+---
+
+## 📌 향후 개발 로드맵 (Roadmap)
+- **No-Code 시트 제어 탭 도입**: 비개발자 운영진을 위한 구글 시트 내 `설정` 탭 기반 봇 컨트롤 제어 아이디어 (자세한 내용은 [`TODO.md`](file:///C:/Users/myfov/Dev/GDGOC_Dicord_Bot/TODO.md) 참고)
