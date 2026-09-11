@@ -42,7 +42,7 @@ let missions = [...defaultMissions];
 let currentActiveSheetName = '기본';
 
 /**
- * 1단계: '설정' 탭에서 C4(4번째 행, C열) 셀의 활성화 탭 이름을 가져옵니다.
+ * 1단계: '설정' 탭에서 C4:I8 드롭다운에 지정된 활성화 탭 이름을 정확히 추출합니다.
  */
 async function fetchActiveSheetName(sheetId) {
     try {
@@ -51,26 +51,51 @@ async function fetchActiveSheetName(sheetId) {
             headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
         });
 
-        if (!res.ok) return null;
-
-        const csvText = await res.text();
-        if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) return null;
-
-        const records = parse(csvText, { skip_empty_lines: false, trim: true });
-
-        // C4 셀 (0-indexed 기준: 3번째 행, 2번째 열)
-        let selectedTab = null;
-        if (records.length > 3 && records[3] && records[3][2]) {
-            selectedTab = records[3][2].trim();
+        if (!res.ok) {
+            console.log(`ℹ️ [설정 탭] '설정' 탭 요청 실패 (상태 코드: ${res.status})`);
+            return null;
         }
 
-        // C4 위치에 값이 없을 경우 주변 셀 탐색 (보정 로직)
+        const csvText = await res.text();
+        if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) {
+            console.log("ℹ️ [설정 탭] '설정' 탭이 공개되지 않았거나 존재하지 않습니다.");
+            return null;
+        }
+
+        const records = parse(csvText, { skip_empty_lines: true, trim: true });
+
+        console.log(`🔍 [설정 탭 CSV 파싱] 전체 유효 행 개수: ${records.length}`);
+
+        // 유효하지 않은 안내문/설명글 단어 필터링 함수
+        const isGuideText = (str) => {
+            if (!str) return true;
+            if (str.length > 15) return true; // 탭 이름이 15자 이상일 리 없으므로 길면 안내문으로 간주
+            const keywords = ['설정', '안내', '제공하는', '기능', '시트입니다', 'GDGOC', '운세', '현재', '선택', '드롭다운'];
+            return keywords.some(kw => str.includes(kw));
+        };
+
+        let selectedTab = null;
+
+        // 1순위: C열 (col index = 2) 전체 행 탐색 (C4:I8 병합 셀의 가장 좌측인 C열 탐색)
+        for (let r = 0; r < records.length; r++) {
+            if (records[r] && records[r][2]) {
+                const val = records[r][2].trim();
+                if (val && !isGuideText(val)) {
+                    selectedTab = val;
+                    console.log(`✅ [설정 탭] C열에서 드롭다운 선택값 발견: "${selectedTab}" (${r + 1}번째 유효행 C열)`);
+                    break;
+                }
+            }
+        }
+
+        // 2순위: 혹시 C열이 아닌 다른 열에 위치할 경우 시트 전체 탐색
         if (!selectedTab) {
-            for (let r = 0; r < Math.min(records.length, 10); r++) {
-                for (let c = 0; c < Math.min(records[r].length, 10); c++) {
+            for (let r = 0; r < Math.min(records.length, 15); r++) {
+                for (let c = 0; c < Math.min(records[r].length, 15); c++) {
                     const val = records[r][c] ? records[r][c].trim() : '';
-                    if (val && val !== '설정' && val !== '현재 활성화 탭' && val !== '현재 탭' && !val.includes('선택')) {
+                    if (val && !isGuideText(val)) {
                         selectedTab = val;
+                        console.log(`✅ [설정 탭] 전체 탐색을 통해 드롭다운 선택값 발견: "${selectedTab}" (${r + 1}행 ${c + 1}열)`);
                         break;
                     }
                 }
@@ -80,7 +105,7 @@ async function fetchActiveSheetName(sheetId) {
 
         return selectedTab || null;
     } catch (err) {
-        console.warn('⚠️ [포춘쿠키] 설정 탭 읽기 실패, 기본 탭 설정을 시도합니다:', err.message);
+        console.warn('⚠️ [설정 탭] 읽기 실패:', err.message);
         return null;
     }
 }
@@ -101,6 +126,8 @@ async function syncFortuneData() {
         const activeTabFromConfig = await fetchActiveSheetName(sheetId);
         const sheetName = activeTabFromConfig || process.env.ACTIVE_SHEET_NAME || '기본';
         currentActiveSheetName = sheetName;
+
+        console.log(`🎯 [포춘쿠키] 최종 대상 탭 결정: '${sheetName}' (설정 탭 읽기: ${activeTabFromConfig ? `'${activeTabFromConfig}'` : '실패/기본값 사용'})`);
 
         // 2단계: 대상 탭 데이터 읽기
         const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&_t=${Date.now()}`;
@@ -161,7 +188,8 @@ async function syncFortuneData() {
             sheetName,
             fortunesCount: fortunes.length,
             itemsCount: itItems.length,
-            missionsCount: missions.length
+            missionsCount: missions.length,
+            detectedFromConfig: activeTabFromConfig
         };
     } catch (error) {
         console.error('❌ [포춘쿠키] 구글 시트 동기화 실패:', error.message);
