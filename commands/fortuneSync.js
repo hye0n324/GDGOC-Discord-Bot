@@ -42,10 +42,11 @@ module.exports = {
         const targetRoleName = rawRoleName.split('#')[0].trim();
         const targetRoleLower = targetRoleName.toLowerCase();
 
-        // 관리자 권한 여부 체크 (최신 member 기준)
-        const isAdmin = member.permissions && (
-            member.permissions.has(PermissionFlagsBits.Administrator) ||
-            member.permissions.has(PermissionFlagsBits.ManageGuild)
+        // discord.js v14 안전한 memberPermissions 사용
+        const memberPerms = interaction.memberPermissions;
+        const isAdmin = memberPerms && (
+            memberPerms.has(PermissionFlagsBits.Administrator) ||
+            memberPerms.has(PermissionFlagsBits.ManageGuild)
         );
 
         // 유저가 보유한 역할(Role) 최신 상태 검사
