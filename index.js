@@ -6,6 +6,7 @@ const { Client, GatewayIntentBits, Collection } = require('discord.js');
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers, // 멤버 및 역할 정보 수신을 위해 추가
     ],
 });
 
