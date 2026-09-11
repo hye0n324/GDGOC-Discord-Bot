@@ -48,33 +48,48 @@ async function syncFortuneData() {
     const sheetId = process.env.GOOGLE_SHEET_ID;
     const sheetName = process.env.ACTIVE_SHEET_NAME || '기본';
 
-    if (!sheetId) {
+    if (!sheetId || sheetId === 'YOUR_GOOGLE_SHEET_ID' || sheetId === '추출한_구글_시트_ID') {
         console.log('ℹ️ [포춘쿠키] GOOGLE_SHEET_ID가 설정되지 않아 기본 로컬 데이터를 사용합니다.');
-        return false;
+        return { success: false, reason: 'GOOGLE_SHEET_ID가 설정되지 않음 (기본 데이터 사용 중)' };
     }
 
     try {
-        const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
-        const response = await fetch(url);
+        const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&_t=${Date.now()}`;
+        const response = await fetch(url, {
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
+        });
 
         if (!response.ok) {
-            throw new Error(`HTTP 요청 실패 (상태 코드: ${response.status})`);
+            throw new Error(`HTTP ${response.status} ${response.statusText} (시트 접근 실패)`);
         }
 
         const csvText = await response.text();
+
+        // 만약 구글 로그인 페이지 HTML 등이 돌아왔을 경우 (공유 설정 미흡)
+        if (csvText.includes('<!DOCTYPE html>') || csvText.includes('<html')) {
+            throw new Error('시트가 공개되지 않았습니다. 공유 설정을 "링크가 있는 모든 사용자에게 공개"로 설정해 주세요.');
+        }
+
         const records = parse(csvText, {
             skip_empty_lines: true,
             trim: true
         });
 
         // 데이터가 전혀 없을 경우
-        if (records.length <= 1) {
-            console.warn(`⚠️ [포춘쿠키] 시트('${sheetName}')에 데이터가 부족하여 기본 데이터를 유지합니다.`);
-            return false;
+        if (records.length === 0) {
+            throw new Error(`시트 탭('${sheetName}')의 내용을 읽을 수 없습니다. 탭 이름을 확인해 주세요.`);
         }
 
-        // 헤더 행(첫번째 줄) 제외
-        const dataRows = records.slice(1);
+        // 첫 번째 행이 헤더인지 여부 체크 및 데이터 파싱
+        // 만약 행이 1개뿐이라면 그 행 자체가 데이터일 수 있음. 
+        // 2개 이상이고 1번째 행이 헤더("오늘의 한 마디" 등)인 경우 slice(1)
+        let dataRows = records;
+        if (records.length > 1 && (records[0][0].includes('오늘') || records[0][0].includes('한 마디') || records[0][0].includes('운세') || records[0][0].includes('컬럼') || records[0][0].includes('Column'))) {
+            dataRows = records.slice(1);
+        }
 
         const newFortunes = [];
         const newItems = [];
@@ -86,16 +101,27 @@ async function syncFortuneData() {
             if (row[2] && row[2].trim()) newMissions.push(row[2].trim());
         }
 
+        if (newFortunes.length === 0 && newItems.length === 0 && newMissions.length === 0) {
+            throw new Error(`시트('${sheetName}')에서 파싱된 유효한 데이터가 없습니다.`);
+        }
+
         if (newFortunes.length > 0) fortunes = newFortunes;
         if (newItems.length > 0) itItems = newItems;
         if (newMissions.length > 0) missions = newMissions;
 
         lastSyncedAt = new Date();
         console.log(`✅ [포춘쿠키] 구글 시트 동기화 완료! (시트 탭: '${sheetName}', 운세: ${fortunes.length}개, ITem: ${itItems.length}개, 미션: ${missions.length}개)`);
-        return true;
+
+        return {
+            success: true,
+            sheetName,
+            fortunesCount: fortunes.length,
+            itemsCount: itItems.length,
+            missionsCount: missions.length
+        };
     } catch (error) {
-        console.error('❌ [포춘쿠키] 구글 시트 동기화 중 오류 발생 (기본 데이터를 유지합니다):', error.message);
-        return false;
+        console.error('❌ [포춘쿠키] 구글 시트 동기화 실패:', error.message);
+        return { success: false, reason: error.message };
     }
 }
 

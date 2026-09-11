@@ -16,15 +16,15 @@ module.exports = {
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
-        const success = await syncFortuneData();
+        const result = await syncFortuneData();
 
-        if (success) {
+        if (result.success) {
             await interaction.editReply({
-                content: `✅ **구글 시트 동기화 완료!**\n현재 시트 탭(\`${process.env.ACTIVE_SHEET_NAME || '기본'}\`)의 최신 문구가 성공적으로 적용되었습니다.`
+                content: `✅ **구글 시트 동기화 성공!**\n- 시트 탭: \`${result.sheetName}\`\n- 적용된 항목: **오늘의 한 마디 (${result.fortunesCount}개)**, **행운의 ITem (${result.itemsCount}개)**, **행운의 미션 (${result.missionsCount}개)**`
             });
         } else {
             await interaction.editReply({
-                content: `⚠️ **동기화 실패 또는 기본 데이터 유지 중**\n구글 시트 ID 설정과 '웹에 게시' 공유 권한을 확인해 주세요.`
+                content: `❌ **구글 시트 동기화 실패 (기본 로컬 데이터가 출력됩니다)**\n- **실패 사유**: \`${result.reason}\`\n\n📌 **체크리스트**:\n1. \`.env\`의 \`GOOGLE_SHEET_ID\`가 맞는지 확인해 주세요.\n2. \`.env\`의 \`ACTIVE_SHEET_NAME\`과 구글 시트 하단의 **탭 이름**(예: \`기본\`, \`Sheet1\`)이 토시 하나 틀리지 않고 일치하는지 확인해 주세요.\n3. 구글 시트 [공유] 설정이 **'링크가 있는 모든 사용자에게 공개 (뷰어)'** 상태인지 확인해 주세요.`
             });
         }
     }
